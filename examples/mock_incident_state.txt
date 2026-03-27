@@ -1,0 +1,11 @@
+PROCESSES:
+root      1234  1  [kworker/u32:1-events_unbound]
+jeb       5678  468344 /usr/bin/python3 suspicious_script.py --target 54.179.117.50
+jeb       9012  468344 ping 8.8.8.8
+
+SOCKETS:
+udp   UNCONN 0      0            192.168.1.135:123        0.0.0.0:*     users:(("ntpd",pid=2817,fd=20))
+raw   UNCONN 0      0                  0.0.0.0:1          0.0.0.0:*     users:(("python3",pid=5678,fd=3))
+
+FILES:
+python3   5678 jeb    3u     raw                0,1      0t0  6246314 ICMP
