@@ -2,14 +2,18 @@ import subprocess
 import json
 import sys
 import re
+import os
 
 def get_system_state():
-    """Gathers filtered process and network state."""
-    ps = subprocess.check_output(["ps", "-eo", "user,pid,ppid,comm,args", "--sort=-start_time"], text=True)
-    filtered_ps = "\n".join([line for line in ps.split("\n") if "[" not in line])
-    ss = subprocess.check_output(["sudo", "ss", "-wnp"], text=True)
-    lsof = subprocess.check_output(["sudo", "lsof", "-nP", "-i"], text=True)
-    return f"PROCESSES:\n{filtered_ps[:5000]}\n\nSOCKETS:\n{ss}\n\nFILES:\n{lsof}"
+    """Gathers detailed process, network, and file state with forensic filtering."""
+    try:
+        ps = subprocess.check_output(["ps", "-eo", "user,pid,ppid,comm,args", "--sort=-start_time"], text=True)
+        # Keep kernel threads for cross-verification in this mode
+        ss = subprocess.check_output(["sudo", "ss", "-wnp"], text=True)
+        lsof = subprocess.check_output(["sudo", "lsof", "-nP", "-i"], text=True)
+        return f"PROCESSES:\n{ps[:10000]}\n\nSOCKETS:\n{ss}\n\nFILES:\n{lsof}"
+    except Exception as e:
+        return f"Error gathering state: {str(e)}"
 
 def get_free_vram():
     """Returns the maximum free VRAM (MB) available on any single GPU."""
@@ -24,55 +28,68 @@ def get_optimal_model(free_vram_mb):
     """Selects the best fitting model based on size and free VRAM."""
     try:
         res = subprocess.check_output(["ollama", "list"], text=True)
-        lines = res.strip().split("\n")[1:] # Skip header
+        lines = res.strip().split("\n")[1:]
         models = []
         for line in lines:
             parts = re.split(r'\s{2,}', line)
-            name = parts[0]
-            size_str = parts[2]
-            
+            if len(parts) < 3: continue
+            name, size_str = parts[0], parts[2]
             val = float(re.search(r'([0-9.]+)', size_str).group(1))
             if 'GB' in size_str: val *= 1024
-            
             models.append({'name': name, 'size_mb': val})
         
         target_vram = free_vram_mb - 500
-        fit_models = [m for m in models if m['size_mb'] < target_vram]
+        fit_models = sorted([m for m in models if m['size_mb'] < target_vram], key=lambda x: x['size_mb'], reverse=True)
         
         if not fit_models:
-            return min(models, key=lambda x: x['size_mb'])['name']
+            return min(models, key=lambda x: x['size_mb'])['name'] if models else "qwen3.5:0.8b"
         
-        return max(fit_models, key=lambda x: x['size_mb'])['name']
+        return fit_models[0]['name']
     except:
-        return "qwen3.5:0.8b" 
+        return "qwen3.5:0.8b"
 
-def delegate_to_ollama(state_data):
-    """Sends state data to local Ollama using dynamic model selection or manual override."""
-    # Priority: Command line argument -> Optimal VRAM selection -> Fallback
-    if len(sys.argv) > 1:
-        model = sys.argv[1]
-        print(f"Using manual model override: {model}")
+def analyze_redteam_indicators(state_data):
+    """Pre-scan for common red-team obfuscation techniques."""
+    alerts = []
+    # 1. Kernel worker with a raw socket (extremely suspicious)
+    if re.search(r'\[kworker.*raw', state_data, re.IGNORECASE):
+        alerts.append("[CRITICAL] Detected Kernel Worker proxying a RAW socket.")
+    
+    # 2. Process running from /tmp or /dev/shm
+    if re.search(r'/(tmp|dev/shm)/', state_data):
+        alerts.append("[WARNING] Detected process executing from volatile directory (/tmp or /dev/shm).")
+        
+    return alerts
+
+def delegate_to_ollama(state_data, manual_model=None):
+    """Sends state data to local Ollama with red-team awareness."""
+    alerts = analyze_redteam_indicators(state_data)
+    
+    if manual_model:
+        model = manual_model
     else:
-        free_vram = get_free_vram()
-        model = get_optimal_model(free_vram)
-        print(f"System Free VRAM: {free_vram}MB. Selected Model: {model}")
+        model = get_optimal_model(get_free_vram())
     
-    prompt = f"Analyze this system state for anomalous network patterns. Be concise. Data: {state_data}"
-    print(f"Delegating analysis to {model}...")
+    prompt = f"""
+    FORENSIC ANALYSIS CHALLENGE:
+    Analyze the provided system state. 
+    Red-Team Alert: Look for masquerading processes (e.g., userspace binaries named like kernel threads).
+    Check if processes named '[kworker...]' have open network sockets.
     
-    # Use -s for silent mode if possible, but ollama run is interactive. 
-    # For scripts, the API is better, but keeping 'ollama run' as requested for now.
+    Data: {state_data}
+    
+    Pre-Analysis Alerts: {", ".join(alerts) if alerts else "None"}
+    
+    Output the single most suspicious PID and explain why.
+    """
+    
+    print(f"Using model: {model}")
     cmd = ["ollama", "run", model, prompt]
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate()
-    
-    if process.returncode == 0:
-        return stdout
-    else:
-        return f"Error: {stderr}"
+    stdout, _ = process.communicate()
+    return stdout
 
 if __name__ == "__main__":
+    manual = sys.argv[1] if len(sys.argv) > 1 else None
     state = get_system_state()
-    analysis = delegate_to_ollama(state)
-    print("\n--- DYNAMIC FORENSIC ANALYSIS ---\n")
-    print(analysis)
+    print(delegate_to_ollama(state, manual))

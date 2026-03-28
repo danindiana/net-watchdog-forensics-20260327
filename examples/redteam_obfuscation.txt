@@ -1,0 +1,11 @@
+PROCESSES:
+root         2  0  [kthreadd]
+root      9999  2  [kworker/u32:0-events_unbound]  <-- RED TEAM: This is actually /tmp/malicious_binary renamed
+jeb       5678  468344 python3 forensic_tool.py
+
+SOCKETS:
+raw   UNCONN 0      0                  0.0.0.0:1          0.0.0.0:*     users:(("kworker/u32:0-e",pid=9999,fd=3))
+
+FILES:
+kworker/u 9999 root    3u     raw                0,1      0t0  9999999 ICMP
+kworker/u 9999 root  txt       REG              259,1   123456  8888888 /tmp/hidden_binary (deleted)

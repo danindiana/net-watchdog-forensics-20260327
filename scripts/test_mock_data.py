@@ -10,21 +10,23 @@ def run_test(file_path, model="qwen3.5:0.8b"):
     with open(file_path, "r") as f:
         state_data = f.read()
 
-    prompt = f"Forensic Task: Identify the PID and process name responsible for anomalous ICMP traffic in this mock data. Be extremely brief. Data: {state_data}"
+    # Reuse the logic from analyze_state.py for consistency
+    import analyze_state
     
-    print(f"Testing mock data with {model}...")
-    cmd = ["ollama", "run", model, prompt]
-    
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    stdout, stderr = process.communicate()
-    
-    if process.returncode == 0:
-        return stdout
-    else:
-        return f"Error: {stderr}"
+    print(f"Testing {file_path} with {model}...")
+    result = analyze_state.delegate_to_ollama(state_data, manual_model=model)
+    return result
 
 if __name__ == "__main__":
-    target_file = "net-watchdog-forensics-20260327/examples/mock_incident_state.txt"
-    result = run_test(target_file)
-    print("\n--- MOCK TEST RESULT ---\n")
-    print(result)
+    # Ensure the scripts directory is in path for imports
+    sys.path.append(os.path.dirname(__file__))
+    
+    test_cases = [
+        "net-watchdog-forensics-20260327/examples/mock_incident_state.txt",
+        "net-watchdog-forensics-20260327/examples/redteam_obfuscation.txt"
+    ]
+    
+    for case in test_cases:
+        print(f"\n{'='*20} STARTING TEST: {case} {'='*20}")
+        print(run_test(case))
+        print(f"{'='*60}\n")
