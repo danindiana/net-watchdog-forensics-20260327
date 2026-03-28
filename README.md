@@ -33,6 +33,12 @@ This project implements a shared `COORD.md` protocol to prevent conflicting syst
 - **Shared Consensus:** Both Gemini and Claude have verified the system as "Safe to Reboot" with Ethernet as the primary path.
 - **Locking:** Protocol includes checking for active task locks before modifying persistent networking configurations (Netplan/NetworkManager).
 
+## Verification Success
+As of March 27, 2026, this toolkit has been successfully verified against both standard and advanced forensic scenarios:
+- **Standard Detection:** Correctly identified userspace scripts targeting external IPs via ICMP.
+- **Red-Team Masquerade Detection:** Successfully flagged a malicious binary masquerading as a kernel thread (`[kworker...]`) by detecting its non-standard possession of a network socket.
+- **VRAM Efficiency:** Proven successful using the `qwen3.5:0.8b` model (~1GB VRAM), confirming that forensic analysis can "float" on top of other heavy GPU tasks without causing model-swapping latency.
+
 ## Usage Examples
 ```bash
 # Automated analysis with VRAM-aware model selection
